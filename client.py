@@ -17,11 +17,13 @@ class MessageStore:
             yield msg
             self.next_to_print += 1
     
-    def msg_to_request(self):
-        if self.store:
-            return self.next_to_print
-        else:
-            return None
+    def iter_to_request(self):
+        if not self.store:
+            return
+        last_seen = sorted(self.store.keys())[-1]
+        for seq in range(self.next_to_print, last_seen):
+            if seq not in self.store:
+                yield seq
     
     def store_message(self, msg):
         seq = msg[1]
@@ -51,8 +53,7 @@ def receive_from_server(s, addr):
             debug("Display", msg)
             payload = msg[2]
             print(payload)
-        seq = msg_store.msg_to_request()
-        if seq is not None:
+        for seq in msg_store.iter_to_request():
             request_message(s, addr, seq)
         msg = receive_message(s)
         debug("Store", msg)

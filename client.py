@@ -1,27 +1,64 @@
 import message
 import socket
 
-UDP_IP = "0.0.0.0"
-UDP_START_IP = "127.0.0.1"
-UDP_PORT = 5005
-UDP_START_PORT = 5006
+SERVER_ADDR = ("127.0.0.1", 5000)
 
-def subscribe_to_server(host, port):
-    s = socket.socket(socket.AF_INET, # Internet
-                socket.SOCK_DGRAM) # UDP
-    s.bind((UDP_IP, UDP_PORT))
-    s.sendto(b"", (host, port))
+def debug(*args):
+    pass
 
-def receive_from_server(host, port):
-    s = socket.socket(socket.AF_INET, # Internet
-                socket.SOCK_DGRAM) # UDP
-    s.bind((host, port))
+class MessageStore:
+    def __init__(self):
+        self.next_to_print = 0
+        self.store = {}
+
+    def iter_available(self):
+        while self.next_to_print in self.store:
+            msg = self.store.pop(self.next_to_print)
+            yield msg
+            self.next_to_print += 1
+    
+    def msg_to_request(self):
+        if self.store:
+            return self.next_to_print
+        else:
+            return None
+    
+    def store_message(self, msg):
+        seq = msg[1]
+        self.store[seq] = msg
+
+def subscribe_to_server(s, addr):
+    msg = message.encode_message(message.START_TYPE, 0, b"")
+    debug("Start")
+    s.sendto(msg, addr)
+
+def request_message(s, addr, seq):
+    msg = message.encode_message(message.REQ_TYPE, seq, b"")
+    debug("Request", seq)
+    s.sendto(msg, addr)
+
+def receive_message(s):
+    data, address = s.recvfrom(1024)
+    return message.decode_message(data)
+    
+def receive_from_server(s, addr):
+    msg_store = MessageStore()
+    next_seq = 0
+    store = {}
 
     while True:
-        data, address = s.recvfrom(1024)
-        type_, seq, payload = message.decode_message(data)
-        print("header:", type_, seq)
-        print("received message:", payload)
+        for msg in msg_store.iter_available():
+            debug("Display", msg)
+            payload = msg[2]
+            print(payload)
+        seq = msg_store.msg_to_request()
+        if seq is not None:
+            request_message(s, addr, seq)
+        msg = receive_message(s)
+        debug("Store", msg)
+        msg_store.store_message(msg)
 
-subscribe_to_server(UDP_START_IP, UDP_START_PORT)
-receive_from_server(UDP_IP, UDP_PORT)
+s = socket.socket(socket.AF_INET, # Internet
+            socket.SOCK_DGRAM) # UDP
+subscribe_to_server(s, SERVER_ADDR)
+receive_from_server(s, SERVER_ADDR)

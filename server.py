@@ -3,34 +3,46 @@ import message
 import random
 import socket
 import time
+import threading
 
-UDP_IP = "127.0.0.1"
-UDP_START_IP = "0.0.0.0"
-UDP_PORT = 5005
-UDP_START_PORT = 5006
+LISTEN_ADDR = ("0.0.0.0", 5000)
 MESSAGE = b"Hello, World!"
 
+def debug(*args):
+    pass
+
+def fetch_message(seq):
+    return ("Hello #" + str(seq)).encode("utf-8")
 
 def drop_message():
     return random.randrange(100) < 10
 
-def serve_client(host, port):
-    s = socket.socket(socket.AF_INET, # Internet
-                socket.SOCK_DGRAM) # UDP
+def wait_for_client(s):
+    msg, addr = s.recvfrom(1024)
+    debug("Start", addr)
+    return addr
 
+def send_to_client(s, addr):
     for i in itertools.count():
-        message_type = 0
-        msg = message.encode_message(message_type, i, MESSAGE)
+        msg = message.encode_message(message.MSG_TYPE, i, fetch_message(i))
         if not drop_message():
-            s.sendto(msg, (host, port))
+            debug("Send", i)
+            s.sendto(msg, addr)
+        else:
+            debug("Drop", i)
         time.sleep(1)
 
-def wait_for_client():
-    s = socket.socket(socket.AF_INET, # Internet
-                socket.SOCK_DGRAM) # UDP
-    s.bind((UDP_START_IP, UDP_START_PORT))
-    msg, address = s.recvfrom(1024)
-    return address
+def serve_retries(s):
+    while True:
+        in_msg, addr = s.recvfrom(1024)
+        in_type, in_seq, in_payload = message.decode_message(in_msg)
+        out_msg = message.encode_message(message.MSG_TYPE, in_seq, fetch_message(in_seq))
+        s.sendto(out_msg, addr)
+        debug("Resend", in_seq)
 
-host, port = wait_for_client()    
-serve_client(host, port)
+s = socket.socket(socket.AF_INET, # Internet
+            socket.SOCK_DGRAM) # UDP
+s.bind(LISTEN_ADDR)
+addr = wait_for_client(s)
+threading.Thread(target=lambda: serve_retries(s)).start()
+send_to_client(s, addr)

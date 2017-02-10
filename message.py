@@ -1,5 +1,9 @@
 import struct
 
+MSG_TYPE = 0
+START_TYPE = 1
+REQ_TYPE = 2
+
 message_format = "!BH"
 
 def encode_message(type_, seq, payload):
